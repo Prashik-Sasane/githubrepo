@@ -1,5 +1,6 @@
 const express = require('express');
 const axios = require('axios');
+const jwt = require('jsonwebtoken');
 
 let books = require("./booksdb.js");
 
@@ -7,6 +8,34 @@ let isValid = require("./auth_users.js").isValid;
 let users = require("./auth_users.js").users;
 
 const public_users = express.Router();
+
+
+// ==================== LOGIN ====================
+
+public_users.post("/login", (req, res) => {
+  const { username, password } = req.body;
+
+  const user = users.find(
+    user => user.username === username && user.password === password
+  );
+
+  if (!user) {
+    return res.status(401).json({
+      message: "Invalid username or password"
+    });
+  }
+
+  const token = jwt.sign(
+    { username: username },
+    "secretkey",
+    { expiresIn: "1h" }
+  );
+
+  return res.status(200).json({
+    message: "Login successful",
+    token: token
+  });
+});
 
 
 // ==================== REGISTER ====================
@@ -39,120 +68,49 @@ public_users.post("/register", (req, res) => {
 
 // ==================== GET ALL BOOKS ====================
 
-public_users.get('/', async function (req, res) {
-  try {
-    const response = await axios.get(
-      'https://openlibrary.org/subjects/fiction.json?limit=10'
-    );
-
-    const booksData = {};
-
-    response.data.works.forEach((book, index) => {
-      booksData[index + 1] = {
-        author: book.authors && book.authors.length > 0
-          ? book.authors[0].name
-          : "Unknown",
-        title: book.title,
-        reviews: {}
-      };
-    });
-
-    return res.status(200).json(booksData);
-
-  } catch (error) {
-    return res.status(500).json({
-      message: "Error retrieving books"
-    });
-  }
+public_users.get('/', function (req, res) {
+  return res.status(200).json(books);
 });
 
 
 // ==================== GET BOOK BY ISBN ====================
 
-public_users.get('/isbn/:isbn', async function (req, res) {
+public_users.get('/isbn/:isbn', function (req, res) {
   const isbn = req.params.isbn;
 
-  try {
-    const response = await axios.get(
-      `https://openlibrary.org/isbn/${isbn}.json`
-    );
-
-    return res.status(200).json({
-      isbn: isbn,
-      title: response.data.title,
-      authors: response.data.authors || []
-    });
-
-  } catch (error) {
-    // Fall back to the local assignment database
-    if (books[isbn]) {
-      return res.status(200).json(books[isbn]);
-    }
-
-    return res.status(404).json({
-      message: "Book not found"
-    });
+  if (books[isbn]) {
+    return res.status(200).json(books[isbn]);
   }
+
+  return res.status(404).json({
+    message: "Book not found"
+  });
 });
 
 
 // ==================== GET BOOKS BY AUTHOR ====================
 
-public_users.get('/author/:author', async function (req, res) {
+public_users.get('/author/:author', function (req, res) {
   const author = req.params.author;
 
-  try {
-    const response = await axios.get(
-      `https://openlibrary.org/search.json?author=${encodeURIComponent(author)}`
-    );
+  const result = Object.values(books).filter(
+    book => book.author.toLowerCase() === author.toLowerCase()
+  );
 
-    const result = response.data.docs.slice(0, 10).map(book => ({
-      author: author,
-      title: book.title,
-      reviews: {}
-    }));
-
-    return res.status(200).json(result);
-
-  } catch (error) {
-    // Fall back to local database
-    const result = Object.values(books).filter(
-      book => book.author.toLowerCase() === author.toLowerCase()
-    );
-
-    return res.status(200).json(result);
-  }
+  return res.status(200).json(result);
 });
 
 
 // ==================== GET BOOKS BY TITLE ====================
 
-public_users.get('/title/:title', async function (req, res) {
+public_users.get('/title/:title', function (req, res) {
   const title = req.params.title;
 
-  try {
-    const response = await axios.get(
-      `https://openlibrary.org/search.json?title=${encodeURIComponent(title)}`
-    );
+  const result = Object.values(books).filter(
+    book => book.title.toLowerCase() === title.toLowerCase()
+  );
 
-    const result = response.data.docs.slice(0, 10).map(book => ({
-      author: book.author_name
-        ? book.author_name[0]
-        : "Unknown",
-      title: book.title,
-      reviews: {}
-    }));
-
-    return res.status(200).json(result);
-
-  } catch (error) {
-    // Fall back to local database
-    const result = Object.values(books).filter(
-      book => book.title.toLowerCase() === title.toLowerCase()
-    );
-
-    return res.status(200).json(result);
-  }
+  return res.status(200).json(result);
 });
 
 
@@ -171,4 +129,67 @@ public_users.get('/review/:isbn', function (req, res) {
 });
 
 
+// ============================================================
+// TASK 11 - AXIOS ASYNC/AWAIT IMPLEMENTATIONS
+// ============================================================
+
+// Retrieve all books using Axios
+async function getAllBooks() {
+  try {
+    const response = await axios.get('http://localhost:5000/');
+    return response.data;
+  } catch (error) {
+    throw new Error("Unable to retrieve all books");
+  }
+}
+
+
+// Retrieve book details by ISBN using Axios
+async function getBookByISBN(isbn) {
+  try {
+    const response = await axios.get(
+      `http://localhost:5000/isbn/${encodeURIComponent(isbn)}`
+    );
+
+    return response.data;
+  } catch (error) {
+    throw new Error("Unable to retrieve book by ISBN");
+  }
+}
+
+
+// Retrieve books by author using Axios
+async function getBooksByAuthor(author) {
+  try {
+    const response = await axios.get(
+      `http://localhost:5000/author/${encodeURIComponent(author)}`
+    );
+
+    return response.data;
+  } catch (error) {
+    throw new Error("Unable to retrieve books by author");
+  }
+}
+
+
+// Retrieve books by title using Axios
+async function getBooksByTitle(title) {
+  try {
+    const response = await axios.get(
+      `http://localhost:5000/title/${encodeURIComponent(title)}`
+    );
+
+    return response.data;
+  } catch (error) {
+    throw new Error("Unable to retrieve books by title");
+  }
+}
+
+
 module.exports.general = public_users;
+
+// Export Axios functions for Task 11
+module.exports.getAllBooks = getAllBooks;
+module.exports.getBookByISBN = getBookByISBN;
+module.exports.getBooksByAuthor = getBooksByAuthor;
+module.exports.getBooksByTitle = getBooksByTitle;
