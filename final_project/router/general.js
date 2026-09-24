@@ -8,7 +8,9 @@ let users = require("./auth_users.js").users;
 
 const public_users = express.Router();
 
-// Register
+
+// ==================== REGISTER ====================
+
 public_users.post("/register", (req, res) => {
   const { username, password } = req.body;
 
@@ -34,11 +36,29 @@ public_users.post("/register", (req, res) => {
   });
 });
 
-// Get all books using Axios Promise
+
+// ==================== GET ALL BOOKS ====================
+
 public_users.get('/', async function (req, res) {
   try {
-    const response = await axios.get('http://localhost:5000/');
-    return res.status(200).json(response.data);
+    const response = await axios.get(
+      'https://openlibrary.org/subjects/fiction.json?limit=10'
+    );
+
+    const booksData = {};
+
+    response.data.works.forEach((book, index) => {
+      booksData[index + 1] = {
+        author: book.authors && book.authors.length > 0
+          ? book.authors[0].name
+          : "Unknown",
+        title: book.title,
+        reviews: {}
+      };
+    });
+
+    return res.status(200).json(booksData);
+
   } catch (error) {
     return res.status(500).json({
       message: "Error retrieving books"
@@ -46,52 +66,98 @@ public_users.get('/', async function (req, res) {
   }
 });
 
-// Get book by ISBN using Axios
+
+// ==================== GET BOOK BY ISBN ====================
+
 public_users.get('/isbn/:isbn', async function (req, res) {
+  const isbn = req.params.isbn;
+
   try {
     const response = await axios.get(
-      `http://localhost:5000/isbn/${req.params.isbn}`
+      `https://openlibrary.org/isbn/${isbn}.json`
     );
 
-    return res.status(200).json(response.data);
+    return res.status(200).json({
+      isbn: isbn,
+      title: response.data.title,
+      authors: response.data.authors || []
+    });
+
   } catch (error) {
+    // Fall back to the local assignment database
+    if (books[isbn]) {
+      return res.status(200).json(books[isbn]);
+    }
+
     return res.status(404).json({
       message: "Book not found"
     });
   }
 });
 
-// Get books by author using Axios
+
+// ==================== GET BOOKS BY AUTHOR ====================
+
 public_users.get('/author/:author', async function (req, res) {
+  const author = req.params.author;
+
   try {
     const response = await axios.get(
-      `http://localhost:5000/author/${encodeURIComponent(req.params.author)}`
+      `https://openlibrary.org/search.json?author=${encodeURIComponent(author)}`
     );
 
-    return res.status(200).json(response.data);
+    const result = response.data.docs.slice(0, 10).map(book => ({
+      author: author,
+      title: book.title,
+      reviews: {}
+    }));
+
+    return res.status(200).json(result);
+
   } catch (error) {
-    return res.status(404).json({
-      message: "Books not found"
-    });
+    // Fall back to local database
+    const result = Object.values(books).filter(
+      book => book.author.toLowerCase() === author.toLowerCase()
+    );
+
+    return res.status(200).json(result);
   }
 });
 
-// Get books by title using Axios
+
+// ==================== GET BOOKS BY TITLE ====================
+
 public_users.get('/title/:title', async function (req, res) {
+  const title = req.params.title;
+
   try {
     const response = await axios.get(
-      `http://localhost:5000/title/${encodeURIComponent(req.params.title)}`
+      `https://openlibrary.org/search.json?title=${encodeURIComponent(title)}`
     );
 
-    return res.status(200).json(response.data);
+    const result = response.data.docs.slice(0, 10).map(book => ({
+      author: book.author_name
+        ? book.author_name[0]
+        : "Unknown",
+      title: book.title,
+      reviews: {}
+    }));
+
+    return res.status(200).json(result);
+
   } catch (error) {
-    return res.status(404).json({
-      message: "Books not found"
-    });
+    // Fall back to local database
+    const result = Object.values(books).filter(
+      book => book.title.toLowerCase() === title.toLowerCase()
+    );
+
+    return res.status(200).json(result);
   }
 });
 
-// Get book review
+
+// ==================== GET BOOK REVIEWS ====================
+
 public_users.get('/review/:isbn', function (req, res) {
   const isbn = req.params.isbn;
 
@@ -103,5 +169,6 @@ public_users.get('/review/:isbn', function (req, res) {
     message: "Book not found"
   });
 });
+
 
 module.exports.general = public_users;
